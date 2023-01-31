@@ -7,7 +7,7 @@ from einops import rearrange
 from timm.models.layers import DropPath, trunc_normal_
 from timm.models.registry import register_model
 from torch import nn
-from utils import merge_pre_bn
+from .utils import merge_pre_bn
 
 NORM_EPS = 1e-5
 
@@ -141,7 +141,7 @@ class NCB(nn.Module):
     def forward(self, x):
         x = self.patch_embed(x)
 
-        if skip_connection: #Added to allow disabling skip connection
+        if self.skip_connection: #Added to allow disabling skip connection
             x = x + self.attention_path_dropout(self.mhca(x))
         else:
             x = self.attention_path_dropout(self.mhca(x))
@@ -272,7 +272,7 @@ class NTB(nn.Module):
 
         out = self.projection(x)
 
-        if skip_connection: #Added to allow disabling skip connection
+        if self.skip_connection: #Added to allow disabling skip connection
             out = out + self.mhca_path_dropout(self.mhca(out))
         else:
             out = self.mhca_path_dropout(self.mhca(out))
@@ -290,8 +290,9 @@ class NTB(nn.Module):
 class NextViT(nn.Module):
     def __init__(self, stem_chs, depths, path_dropout, attn_drop=0, drop=0, num_classes=1000,
                  strides=[1, 2, 2, 2], sr_ratios=[8, 4, 2, 1], head_dim=32, mix_block_ratio=0.75,
-                 use_checkpoint=False):
+                 use_checkpoint=False, skip_connection = True):
         super(NextViT, self).__init__()
+        self.skip_connection = skip_connection
         self.use_checkpoint = use_checkpoint
 
         self.stage_out_channels = [[96] * (depths[0]),
@@ -328,12 +329,12 @@ class NextViT(nn.Module):
                 block_type = block_types[block_id]
                 if block_type is NCB:
                     layer = NCB(input_channel, output_channel, stride=stride, path_dropout=dpr[idx + block_id],
-                                drop=drop, head_dim=head_dim)
+                                drop=drop, head_dim=head_dim, skip_connection=self.skip_connection)
                     features.append(layer)
                 elif block_type is NTB:
                     layer = NTB(input_channel, output_channel, path_dropout=dpr[idx + block_id], stride=stride,
                                 sr_ratio=sr_ratios[stage_id], head_dim=head_dim, mix_block_ratio=mix_block_ratio,
-                                attn_drop=attn_drop, drop=drop)
+                                attn_drop=attn_drop, drop=drop, skip_connection=self.skip_connection)
                     features.append(layer)
                 input_channel = output_channel
             idx += numrepeat
@@ -399,4 +400,9 @@ def nextvit_base(pretrained=False, pretrained_cfg=None, **kwargs):
 @register_model
 def nextvit_large(pretrained=False, pretrained_cfg=None, **kwargs):
     model = NextViT(stem_chs=[64, 32, 64], depths=[3, 4, 30, 3], path_dropout=0.2, **kwargs)
+    return model
+
+@register_model
+def nextvit_small_noskip(pretrained=False, pretrained_cfg=None, **kwargs):
+    model = NextViT(stem_chs=[64, 32, 64], depths=[3, 4, 10, 3], path_dropout=0.1, skip_connection=False, **kwargs)
     return model

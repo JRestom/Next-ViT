@@ -19,6 +19,7 @@ from losses import DistillationLoss
 from samplers import RASampler
 import utils
 import nextvit
+import wandb
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Next-ViT training and evaluation script', add_help=False)
@@ -149,10 +150,16 @@ def get_args_parser():
                         help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
 
+    #Wandb
+    parser.add_argument('--wandb', action='store_true', default=False, help='log training and validation metrics to wandb')
+
+    parser.add_argument('--experiment', default='NextViT', type=str, metavar='NAME', help='name of project')
+
     # test throught
     parser.add_argument('--throughout', action='store_true', help='Perform throughout only')
     return parser
 
+    
 
 @torch.no_grad()
 def throughput(data_loader, model, logger):
@@ -187,6 +194,10 @@ def main(args):
 
     dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
     dataset_val, _ = build_dataset(is_train=False, args=args)
+
+    if args.rank == 0 and args.wandb:
+        wandb.init(project=args.experiment, config=args)
+        
 
     if args.distributed:
         num_tasks = utils.get_world_size()

@@ -80,6 +80,7 @@ class MHCA(nn.Module):
         self.act = nn.ReLU(inplace=True)
         self.projection = nn.Conv2d(out_channels, out_channels, kernel_size=1, bias=False)
 
+
     def forward(self, x):
         out = self.group_conv3x3(x)
         out = self.norm(out)
@@ -115,7 +116,7 @@ class NCB(nn.Module):
     Next Convolution Block
     """
     def __init__(self, in_channels, out_channels, stride=1, path_dropout=0,
-                 drop=0, head_dim=32, mlp_ratio=3):
+                 drop=0, head_dim=32, mlp_ratio=3, skip_connection=True):
         super(NCB, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -130,6 +131,7 @@ class NCB(nn.Module):
         self.mlp = Mlp(out_channels, mlp_ratio=mlp_ratio, drop=drop, bias=True)
         self.mlp_path_dropout = DropPath(path_dropout)
         self.is_bn_merged = False
+        self.skip_connection = skip_connection #Added to allow disabling skip connection
 
     def merge_bn(self):
         if not self.is_bn_merged:
@@ -138,7 +140,12 @@ class NCB(nn.Module):
 
     def forward(self, x):
         x = self.patch_embed(x)
-        x = x + self.attention_path_dropout(self.mhca(x))
+
+        if skip_connection: #Added to allow disabling skip connection
+            x = x + self.attention_path_dropout(self.mhca(x))
+        else:
+            x = self.attention_path_dropout(self.mhca(x))
+
         if not torch.onnx.is_in_onnx_export() and not self.is_bn_merged:
             out = self.norm(x)
         else:
@@ -219,8 +226,7 @@ class NTB(nn.Module):
     """
     def __init__(
             self, in_channels, out_channels, path_dropout, stride=1, sr_ratio=1,
-            mlp_ratio=2, head_dim=32, mix_block_ratio=0.75, attn_drop=0, drop=0,
-    ):
+            mlp_ratio=2, head_dim=32, mix_block_ratio=0.75, attn_drop=0, drop=0, skip_connection=True):
         super(NTB, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -245,6 +251,7 @@ class NTB(nn.Module):
         self.mlp_path_dropout = DropPath(path_dropout)
 
         self.is_bn_merged = False
+        self.skip_connection = skip_connection #Added to allow disabling skip connection
 
     def merge_bn(self):
         if not self.is_bn_merged:
@@ -264,7 +271,12 @@ class NTB(nn.Module):
         x = x + rearrange(out, "b (h w) c -> b c h w", h=H)
 
         out = self.projection(x)
-        out = out + self.mhca_path_dropout(self.mhca(out))
+
+        if skip_connection: #Added to allow disabling skip connection
+            out = out + self.mhca_path_dropout(self.mhca(out))
+        else:
+            out = self.mhca_path_dropout(self.mhca(out))
+            
         x = torch.cat([x, out], dim=1)
 
         if not torch.onnx.is_in_onnx_export() and not self.is_bn_merged:

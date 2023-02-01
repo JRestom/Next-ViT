@@ -56,3 +56,6 @@ fi
     --data-path /nfs/users/ext_jose.viera/datasets/imagenet \
     --dist-eval
 
+    
+
+

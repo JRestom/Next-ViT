@@ -154,6 +154,7 @@ def get_args_parser():
     parser.add_argument('--wandb', action='store_true', default=False, help='log training and validation metrics to wandb')
 
     parser.add_argument('--experiment', default='NextViT', type=str, metavar='NAME', help='name of project')
+    parser.add_argument('--run_name', default='runboirun', type=str, metavar='NAME', help='name of project')
 
     # test throught
     parser.add_argument('--throughout', action='store_true', help='Perform throughout only')
@@ -195,8 +196,9 @@ def main(args):
     dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
     dataset_val, _ = build_dataset(is_train=False, args=args)
 
-    if args.rank == 0 and args.wandb:
+    if args.wandb:
         wandb.init(project=args.experiment, config=args)
+        wandb.run.name = args.run_name
         
 
     if args.distributed:
@@ -362,6 +364,10 @@ def main(args):
 
         test_stats = evaluate(data_loader_val, model, device)
         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+
+        #Log stats in Wandb
+        wandb.log({'test': test_stats["acc1"] , 'epoch': epoch})
+
         if test_stats["acc1"] > max_accuracy:
             if args.output_dir:
                 checkpoint_paths = [output_dir / 'checkpoint_best.pth']
